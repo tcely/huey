@@ -1287,7 +1287,7 @@ Result
         Traceback (most recent call last):
           File "<stdin>", line 1, in <module>
           File "/home/charles/tmp/huey/src/huey/huey/api.py", line 684, in get
-            raise TaskException(result.metadata)
+            raise TaskException(metadata=result.metadata)
         huey.exceptions.TaskException: Exception('I failed',)
 
     .. py:attribute:: id
