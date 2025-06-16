@@ -528,7 +528,7 @@ Huey object
             @huey.pre_execute()
             def my_pre_execute_hook(task):
                 if datetime.datetime.now().weekday() == 6:
-                    raise CancelExecution('Sunday -- no work will be done.')
+                    raise CancelExecution('Sunday -- no work will be done.', retry=False)
 
     .. py:method:: unregister_pre_execute(name_or_fn)
 
