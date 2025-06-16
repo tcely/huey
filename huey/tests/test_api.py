@@ -908,7 +908,7 @@ class TestQueue(BaseTestCase):
     def test_cancel_execution(self):
         @self.huey.task()
         def task_a(n=None):
-            raise CancelExecution(retry=n)
+            raise CancelExecution('some message ', retry=n)
 
         r = task_a()
         self.assertTrue(self.execute_next() is None)
