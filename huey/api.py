@@ -925,9 +925,9 @@ class TaskLock(object):
         self._key = '%s.lock.%s' % (self._huey.name, self._name)
         self._huey._locks.add(self._key)
 
-    def is_locked(self):
+    def locked(self):
         return self._huey.storage.has_data_for_key(self._key)
-    locked = is_locked
+    is_locked = locked
 
     def __call__(self, fn):
         @wraps(fn)
@@ -940,16 +940,16 @@ class TaskLock(object):
         self.acquire()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._huey.delete(self._key)
+        self.release()
 
     def acquire(self):
         if not self._huey.put_if_empty(self._key, '1'):
             raise TaskLockedException('unable to acquire lock %s' % self._name)
         return True
 
-    def clear(self):
+    def release(self):
         return self._huey.delete(self._key)
-    release = clear
+    clear = release
 
 
 class Result(object):
