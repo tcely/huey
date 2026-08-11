@@ -186,25 +186,24 @@ class SqliteStorage(BaseSqlStorage):
             return True
 
     def incr(self, key, amount=1):
+        if not self.sqlite_version_info >= (3, 24, 0):
+            raise NotImplementedError('SQLite 3.24 or newer is required.')
+        insert_sql = (
+            'insert into counter (queue, key, value) '
+            'values (?, ?, ?) on conflict (queue, key) '
+            'do update set value = value + ?'
+        )
+        select_counter = True
+        if self.sqlite_version_info >= (3, 35, 0):
+            insert_sql += ' returning value'
+            select_counter = False
         with self.db(commit=True) as curs:
-            if self.sqlite_version_info >= (3, 35, 0):
-                curs.execute('insert into counter (queue, key, value) '
-                             'values (?, ?, ?) on conflict (queue, key) '
-                             'do update set value = value + ? '
-                             'returning value',
-                             (self.name, key, amount, amount))
-                value, = curs.fetchone()
-            elif self.sqlite_version_info >= (3, 24, 0):
-                curs.execute('insert into counter (queue, key, value) '
-                             'values (?, ?, ?) on conflict (queue, key) '
-                             'do update set value = value + ?',
-                             (self.name, key, amount, amount))
+            curs.execute(insert_sql, (self.name, key, amount, amount))
+            if select_counter:
                 curs.execute('select value from counter '
                              'where queue = ? and key = ?',
                              (self.name, key))
-                value, = curs.fetchone()
-            else:
-                raise NotImplementedError('SQLite 3.24 or newer is required.')
+            value, = curs.fetchone()
 
         return value
 
