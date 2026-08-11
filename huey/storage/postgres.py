@@ -1,5 +1,4 @@
 import os
-import re
 import threading
 import time
 
@@ -8,7 +7,7 @@ try:
 except ImportError:
     psycopg = None
 
-from ._shared import ConfigurationError, EmptyData, hexdigest
+from ._shared import ConfigurationError, EmptyData, clean_name, hexdigest
 from ._sql_base import BaseSqlStorage
 
 
@@ -27,7 +26,7 @@ class PostgresStorage(BaseSqlStorage):
         self.read_timeout = read_timeout
         self.connection_params = connection_params
 
-        prefix = re.sub('[^A-Za-z0-9_]', '', table_prefix)
+        prefix = clean_name(table_prefix)
         self.table_kv = prefix + '_kv'
         self.table_schedule = prefix + '_schedule'
         self.table_task = prefix + '_task'

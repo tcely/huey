@@ -1,4 +1,3 @@
-import re
 import struct
 
 from functools import cached_property
@@ -12,7 +11,7 @@ except ImportError:
     ConnectionPool = Redis = ConnectionError = TimeoutError = None
 
 from ._base import BaseStorage
-from ._shared import ConfigurationError, EmptyData, convert_ts, int_time
+from ._shared import ConfigurationError, EmptyData, clean_name, convert_ts, int_time
 
 
 # A custom lua script to pass to redis that will read tasks from the schedule
@@ -87,7 +86,7 @@ class RedisStorage(BaseStorage):
                      for i in version.split('.'))
 
     def clean_name(self, name):
-        return re.sub('[^A-Za-z0-9_]', '', name)
+        return clean_name(name)
 
     def convert_ts(self, ts):
         return convert_ts(ts)
