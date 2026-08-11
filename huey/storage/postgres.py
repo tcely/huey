@@ -169,8 +169,8 @@ class PostgresStorage(BaseSqlStorage):
                 return data  # Otherwise another worker won, keep waiting.
 
     def queue_size(self):
-        return self.sql('select count(*) from {} where queue = %s'.format(
-            self.table_task), (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(*) from {} where queue = %s'.format(
+            self.table_task), (self.name,), results=True))
 
     def enqueued_items(self, limit=None):
         sql = ('select data from {} where queue = %s '
@@ -204,8 +204,8 @@ class PostgresStorage(BaseSqlStorage):
                 sorted(rows, key=lambda row: row[:2])]
 
     def schedule_size(self):
-        return self.sql('select count(*) from {} where queue = %s'.format(
-            self.table_schedule), (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(*) from {} where queue = %s'.format(
+            self.table_schedule), (self.name,), results=True))
 
     def scheduled_items(self, limit=None):
         sql = ('select data from {} where queue = %s '
@@ -234,7 +234,7 @@ class PostgresStorage(BaseSqlStorage):
         res = self.sql('select value from {} where queue = %s and '
                        'key = %s'.format(self.table_kv),
                        (self.name, self._key(key)), results=True)
-        return bytes(res[0][0]) if res else EmptyData
+        return self._first(res) if res else EmptyData
 
     def pop_data(self, key):
         with self.db() as curs:
@@ -272,8 +272,8 @@ class PostgresStorage(BaseSqlStorage):
             self.table_counter), (self.name, self._key(key)))
 
     def result_store_size(self):
-        return self.sql('select count(*) from {} where queue = %s'.format(
-            self.table_kv), (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(*) from {} where queue = %s'.format(
+            self.table_kv), (self.name,), results=True))
 
     def result_items(self):
         res = self.sql('select key, value from {} where queue = %s'.format(
