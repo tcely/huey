@@ -98,7 +98,7 @@ class SqliteStorage(BaseSqlStorage):
         params = (self.name,)
         if limit is not None:
             sql += ' limit ?'
-            params = (self.name, limit)
+            params += (limit,)
 
         return [i for i, in self.sql(sql, params, results=True)]
 
@@ -134,7 +134,7 @@ class SqliteStorage(BaseSqlStorage):
         params = (self.name,)
         if limit is not None:
             sql += ' limit ?'
-            params = (self.name, limit)
+            params += (limit,)
 
         return [i for i, in self.sql(sql, params, results=True)]
 
