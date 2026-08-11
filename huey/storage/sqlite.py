@@ -4,7 +4,7 @@ except ImportError:
     sqlite3 = None
 
 from ._base import BaseStorage
-from ._shared import EmptyData
+from ._shared import ConfigurationError, EmptyData
 from ._sql_base import BaseSqlStorage
 
 
@@ -35,6 +35,9 @@ class SqliteStorage(BaseSqlStorage):
     def __init__(self, name='huey', filename='huey.db', cache_mb=8,
                  fsync=None, journal_mode='wal', timeout=5, strict_fifo=False,
                  create_tables=True, **kwargs):
+        if sqlite3 is None:
+            raise ConfigurationError('"sqlite3" not found. '
+                                     'Python 3 should have included this.')
         self.filename = filename
         self._cache_mb = cache_mb
         self._fsync = fsync
