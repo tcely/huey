@@ -42,7 +42,7 @@ class PostgresStorage(BaseSqlStorage):
             channel = 'huey.q.%s' % digest
         self.channel = channel
 
-        self.ddl = [q.format(p=prefix) for q in (
+        self.ddl = tuple(q.format(p=prefix) for q in (
             'create table if not exists {p}_kv ('
             'queue text not null, key text not null, value bytea not null, '
             'primary key(queue, key))',
@@ -64,7 +64,7 @@ class PostgresStorage(BaseSqlStorage):
 
             'create table if not exists {p}_counter ('
             'queue text not null, key text not null, '
-            'value bigint not null default 0, primary key(queue, key))')]
+            'value bigint not null default 0, primary key(queue, key))'))
 
         # Do not reuse conns across fork!
         self._inherited = []

@@ -22,7 +22,7 @@ def _value_error_msg(name, /, expected, actual, example=None):
 
 class BaseSqlStorage(BaseStorage):
     begin_sql = 'begin'
-    ddl = []
+    ddl = ()
 
     def __init__(self, *args, **kwargs):
         create_tables = kwargs.pop('create_tables', True)

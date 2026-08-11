@@ -29,8 +29,8 @@ class SqliteStorage(BaseSqlStorage):
                      'queue text not null, key text not null, '
                      'value integer not null default 0, '
                      'primary key(queue, key))')
-    ddl = [table_kv, table_sched, index_sched, table_task, index_task,
-           table_counter]
+    ddl = (table_kv, table_sched, index_sched, table_task, index_task,
+           table_counter)
 
     def __init__(self, name='huey', filename='huey.db', cache_mb=8,
                  fsync=None, journal_mode='wal', timeout=5, strict_fifo=False,
@@ -53,7 +53,7 @@ class SqliteStorage(BaseSqlStorage):
             ddl[3] = self.table_task.replace(
                 'primary key',
                 'primary key autoincrement')
-            self.ddl = ddl
+            self.ddl = tuple(ddl)
 
         self.to_blob = memoryview
 
