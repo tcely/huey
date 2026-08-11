@@ -4,12 +4,11 @@ import os
 import shutil
 import struct
 import threading
-import time
 
 from huey.utils import FileLock
 
 from ._base import BaseStorage
-from ._shared import EmptyData
+from ._shared import EmptyData, convert_ts, int_time
 
 
 class FileStorage(BaseStorage):
@@ -63,7 +62,7 @@ class FileStorage(BaseStorage):
             # timestamp (asc).
             prefix = '%04x-%012x' % (
                 self.MAX_PRIORITY - priority,
-                int(time.time() * 1000))
+                int_time(1e3))
 
             base = filename = os.path.join(self.queue_path, prefix)
             conflict = 0
@@ -109,7 +108,7 @@ class FileStorage(BaseStorage):
         self._flush_dir(self.queue_path)
 
     def _timestamp_to_prefix(self, ts):
-        ts = time.mktime(ts.timetuple()) + (ts.microsecond * 1e-6)
+        ts = convert_ts(ts)
         return '%012x' % int(ts * 1000)
 
     def add_to_schedule(self, data, ts):

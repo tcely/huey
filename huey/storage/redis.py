@@ -1,6 +1,5 @@
 import re
 import struct
-import time
 
 from functools import cached_property
 
@@ -13,7 +12,7 @@ except ImportError:
     ConnectionPool = Redis = ConnectionError = TimeoutError = None
 
 from ._base import BaseStorage
-from ._shared import ConfigurationError, EmptyData
+from ._shared import ConfigurationError, EmptyData, convert_ts, int_time
 
 
 # A custom lua script to pass to redis that will read tasks from the schedule
@@ -91,7 +90,7 @@ class RedisStorage(BaseStorage):
         return re.sub('[^A-Za-z0-9_]', '', name)
 
     def convert_ts(self, ts):
-        return time.mktime(ts.timetuple()) + (ts.microsecond * 1e-6)
+        return convert_ts(ts)
 
     def enqueue(self, data, priority=None):
         if priority:
@@ -317,7 +316,7 @@ class RedisPriorityQueue(object):
         # the underlying data-type is a sorted-set, this also prevents multiple
         # identical messages, except they are enqueued on the same microsecond,
         # from being treated as a single item.
-        prefix = struct.pack('>Q', int(time.time() * 1e6))
+        prefix = struct.pack('>Q', int_time(1e6))
         self.conn.zadd(self.queue_key, {prefix + data: priority})
 
     def dequeue(self):
