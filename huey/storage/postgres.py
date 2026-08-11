@@ -278,7 +278,7 @@ class PostgresStorage(BaseSqlStorage):
     def result_items(self):
         res = self.sql('select key, value from {} where queue = %s'.format(
             self.table_kv), (self.name,), results=True)
-        return dict((k, bytes(v)) for k, v in res)
+        return self._to_dict(res)
 
     def flush_results(self):
         self.sql('delete from {} where queue = %s'.format(self.table_kv),
