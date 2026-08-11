@@ -100,7 +100,7 @@ class SqliteStorage(BaseSqlStorage):
             sql += ' limit ?'
             params += (limit,)
 
-        return [i for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_queue(self):
         self.sql('delete from task where queue=?', (self.name,), commit=True)
@@ -136,7 +136,7 @@ class SqliteStorage(BaseSqlStorage):
             sql += ' limit ?'
             params += (limit,)
 
-        return [i for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_schedule(self):
         self.sql('delete from schedule where queue = ?', (self.name,), True)
