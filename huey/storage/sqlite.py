@@ -218,7 +218,7 @@ class SqliteStorage(BaseSqlStorage):
     def result_items(self):
         res = self.sql('select key, value from kv where queue=?', (self.name,),
                        results=True)
-        return dict((k, v) for k, v in res)
+        return self._to_dict(res)
 
     def flush_results(self):
         self.sql('delete from kv where queue=?', (self.name,), True)
