@@ -1,4 +1,3 @@
-import hashlib
 import os
 import re
 import threading
@@ -9,7 +8,7 @@ try:
 except ImportError:
     psycopg = None
 
-from ._shared import ConfigurationError, EmptyData
+from ._shared import ConfigurationError, EmptyData, hexdigest
 from ._sql_base import BaseSqlStorage
 
 
@@ -38,7 +37,7 @@ class PostgresStorage(BaseSqlStorage):
         # too long" from pg_notify(), which would break every enqueue.
         channel = '%s.q.%s' % (prefix, name)
         if len(channel.encode('utf-8')) > 63:
-            digest = hashlib.md5(channel.encode('utf-8')).hexdigest()
+            digest = hexdigest(channel.encode('utf-8'))
             channel = 'huey.q.%s' % digest
         self.channel = channel
 

@@ -1,4 +1,3 @@
-import hashlib
 import itertools
 import os
 import shutil
@@ -8,7 +7,7 @@ import threading
 from huey.utils import FileLock
 
 from ._base import BaseStorage
-from ._shared import EmptyData, convert_ts, int_time
+from ._shared import EmptyData, convert_ts, hexdigest, int_time
 
 
 class FileStorage(BaseStorage):
@@ -161,9 +160,7 @@ class FileStorage(BaseStorage):
         self._flush_dir(self.schedule_path)
 
     def path_for_key(self, key):
-        if isinstance(key, str):
-            key = key.encode('utf8')
-        checksum = hashlib.md5(key).hexdigest()
+        checksum = hexdigest(key)
         prefix = checksum[:self.levels]
         prefix_filename = itertools.chain(prefix, (checksum,))
         return os.path.join(self.result_path, *prefix_filename)
@@ -233,9 +230,7 @@ class FileStorage(BaseStorage):
         return os.path.exists(self.path_for_key(key))
 
     def _counter_filename(self, key):
-        if isinstance(key, str):
-            key = key.encode('utf8')
-        return os.path.join(self.counter_path, hashlib.md5(key).hexdigest())
+        return os.path.join(self.counter_path, hexdigest(key))
 
     def incr(self, key, amount=1):
         filename = self._counter_filename(key)
