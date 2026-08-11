@@ -90,8 +90,8 @@ class SqliteStorage(BaseSqlStorage):
                     return data
 
     def queue_size(self):
-        return self.sql('select count(id) from task where queue=?',
-                        (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(id) from task where queue=?',
+                                    (self.name,), results=True))
 
     def enqueued_items(self, limit=None):
         sql = 'select data from task where queue=? order by priority desc, id'
@@ -126,8 +126,8 @@ class SqliteStorage(BaseSqlStorage):
             return data
 
     def schedule_size(self):
-        return self.sql('select count(id) from schedule where queue=?',
-                        (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(id) from schedule where queue=?',
+                                    (self.name,), results=True))
 
     def scheduled_items(self, limit=None):
         sql = 'select data from schedule where queue=? order by timestamp'
@@ -149,7 +149,7 @@ class SqliteStorage(BaseSqlStorage):
     def peek_data(self, key):
         res = self.sql('select value from kv where queue = ? and key = ?',
                        (self.name, key), results=True)
-        return res[0][0] if res else EmptyData
+        return self._first(res) if res else EmptyData
 
     def pop_data(self, key):
         with self.db(commit=True) as curs:
@@ -212,8 +212,8 @@ class SqliteStorage(BaseSqlStorage):
                  (self.name, key), commit=True)
 
     def result_store_size(self):
-        return self.sql('select count(*) from kv where queue=?', (self.name,),
-                        results=True)[0][0]
+        return self._first(self.sql('select count(*) from kv where queue=?', (self.name,),
+                                    results=True))
 
     def result_items(self):
         res = self.sql('select key, value from kv where queue=?', (self.name,),
