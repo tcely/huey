@@ -178,7 +178,7 @@ class PostgresStorage(BaseSqlStorage):
         params = (self.name,)
         if limit is not None:
             sql += ' limit %s'
-            params = (self.name, limit)
+            params += (limit,)
 
         return [bytes(i) for i, in self.sql(sql, params, results=True)]
 
@@ -213,7 +213,7 @@ class PostgresStorage(BaseSqlStorage):
         params = (self.name,)
         if limit is not None:
             sql += ' limit %s'
-            params = (self.name, limit)
+            params += (limit,)
 
         return [bytes(i) for i, in self.sql(sql, params, results=True)]
 
