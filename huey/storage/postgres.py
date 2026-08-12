@@ -1,6 +1,4 @@
-import hashlib
 import os
-import re
 import threading
 import time
 
@@ -9,7 +7,7 @@ try:
 except ImportError:
     psycopg = None
 
-from ._shared import ConfigurationError, EmptyData
+from ._shared import ConfigurationError, EmptyData, clean_name, hexdigest
 from ._sql_base import BaseSqlStorage
 
 
@@ -28,7 +26,7 @@ class PostgresStorage(BaseSqlStorage):
         self.read_timeout = read_timeout
         self.connection_params = connection_params
 
-        prefix = re.sub('[^A-Za-z0-9_]', '', table_prefix)
+        prefix = clean_name(table_prefix)
         self.table_kv = prefix + '_kv'
         self.table_schedule = prefix + '_schedule'
         self.table_task = prefix + '_task'
@@ -38,11 +36,11 @@ class PostgresStorage(BaseSqlStorage):
         # too long" from pg_notify(), which would break every enqueue.
         channel = '%s.q.%s' % (prefix, name)
         if len(channel.encode('utf-8')) > 63:
-            digest = hashlib.md5(channel.encode('utf-8')).hexdigest()
+            digest = hexdigest(channel.encode('utf-8'))
             channel = 'huey.q.%s' % digest
         self.channel = channel
 
-        self.ddl = [q.format(p=prefix) for q in (
+        self.ddl = tuple(q.format(p=prefix) for q in (
             'create table if not exists {p}_kv ('
             'queue text not null, key text not null, value bytea not null, '
             'primary key(queue, key))',
@@ -64,7 +62,7 @@ class PostgresStorage(BaseSqlStorage):
 
             'create table if not exists {p}_counter ('
             'queue text not null, key text not null, '
-            'value bigint not null default 0, primary key(queue, key))')]
+            'value bigint not null default 0, primary key(queue, key))'))
 
         # Do not reuse conns across fork!
         self._inherited = []
@@ -138,7 +136,7 @@ class PostgresStorage(BaseSqlStorage):
         with self.db(commit=True) as curs:
             curs.execute('insert into {} (queue, data, priority) '
                          'values (%s, %s, %s)'.format(self.table_task),
-                         (self.name, data, priority or 0))
+                         (self.name, self._bytea(data), priority or 0))
             curs.execute('select pg_notify(%s, %s)', (self.channel, ''))
 
     def _dequeue(self):
@@ -151,7 +149,7 @@ class PostgresStorage(BaseSqlStorage):
                          (self.name,))
             row = curs.fetchone()
         if row is not None:
-            return bytes(row[0])
+            return row[0]
 
     def dequeue(self):
         data = self._dequeue()
@@ -171,8 +169,8 @@ class PostgresStorage(BaseSqlStorage):
                 return data  # Otherwise another worker won, keep waiting.
 
     def queue_size(self):
-        return self.sql('select count(*) from {} where queue = %s'.format(
-            self.table_task), (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(*) from {} where queue = %s'.format(
+            self.table_task), (self.name,), results=True))
 
     def enqueued_items(self, limit=None):
         sql = ('select data from {} where queue = %s '
@@ -180,9 +178,9 @@ class PostgresStorage(BaseSqlStorage):
         params = (self.name,)
         if limit is not None:
             sql += ' limit %s'
-            params = (self.name, limit)
+            params += (limit,)
 
-        return [bytes(i) for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_queue(self):
         self.sql('delete from {} where queue = %s'.format(self.table_task),
@@ -191,7 +189,7 @@ class PostgresStorage(BaseSqlStorage):
     def add_to_schedule(self, data, ts):
         self.sql('insert into {} (queue, data, timestamp) '
                  'values (%s, %s, %s)'.format(self.table_schedule),
-                 (self.name, data, ts.timestamp()))
+                 (self.name, self._bytea(data), ts.timestamp()))
 
     def read_schedule(self, ts):
         with self.db() as curs:
@@ -202,12 +200,12 @@ class PostgresStorage(BaseSqlStorage):
                              t=self.table_schedule),
                          (self.name, ts.timestamp()))
             rows = curs.fetchall()
-        return [bytes(data) for _, _, data in
+        return [data for _, _, data in
                 sorted(rows, key=lambda row: row[:2])]
 
     def schedule_size(self):
-        return self.sql('select count(*) from {} where queue = %s'.format(
-            self.table_schedule), (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(*) from {} where queue = %s'.format(
+            self.table_schedule), (self.name,), results=True))
 
     def scheduled_items(self, limit=None):
         sql = ('select data from {} where queue = %s '
@@ -215,28 +213,35 @@ class PostgresStorage(BaseSqlStorage):
         params = (self.name,)
         if limit is not None:
             sql += ' limit %s'
-            params = (self.name, limit)
+            params += (limit,)
 
-        return [bytes(i) for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_schedule(self):
         self.sql('delete from {} where queue = %s'.format(
             self.table_schedule), (self.name,))
 
     def _key(self, key):
-        return key.decode('utf-8') if isinstance(key, bytes) else key
+        if isinstance(key, bytes):
+            key = key.decode('utf-8')
+        if not isinstance(key, str):
+            key = str(key)
+        return key
+
+    def _bytea(self, value):
+        return value.encode('utf-8') if isinstance(value, str) else value
 
     def put_data(self, key, value, is_result=False):
         self.sql('insert into {} (queue, key, value) values (%s, %s, %s) '
                  'on conflict (queue, key) do update set '
                  'value = excluded.value'.format(self.table_kv),
-                 (self.name, self._key(key), value))
+                 (self.name, self._key(key), self._bytea(value)))
 
     def peek_data(self, key):
         res = self.sql('select value from {} where queue = %s and '
                        'key = %s'.format(self.table_kv),
                        (self.name, self._key(key)), results=True)
-        return bytes(res[0][0]) if res else EmptyData
+        return self._first(res) if res else EmptyData
 
     def pop_data(self, key):
         with self.db() as curs:
@@ -244,7 +249,7 @@ class PostgresStorage(BaseSqlStorage):
                          'returning value'.format(self.table_kv),
                          (self.name, self._key(key)))
             row = curs.fetchone()
-        return bytes(row[0]) if row is not None else EmptyData
+        return row[0] if row is not None else EmptyData
 
     def has_data_for_key(self, key):
         return bool(self.sql('select 1 from {} where queue = %s and '
@@ -256,7 +261,7 @@ class PostgresStorage(BaseSqlStorage):
             curs.execute('insert into {} (queue, key, value) '
                          'values (%s, %s, %s) '
                          'on conflict do nothing'.format(self.table_kv),
-                         (self.name, self._key(key), value))
+                         (self.name, self._key(key), self._bytea(value)))
             return curs.rowcount == 1
 
     def incr(self, key, amount=1):
@@ -274,13 +279,13 @@ class PostgresStorage(BaseSqlStorage):
             self.table_counter), (self.name, self._key(key)))
 
     def result_store_size(self):
-        return self.sql('select count(*) from {} where queue = %s'.format(
-            self.table_kv), (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(*) from {} where queue = %s'.format(
+            self.table_kv), (self.name,), results=True))
 
     def result_items(self):
         res = self.sql('select key, value from {} where queue = %s'.format(
             self.table_kv), (self.name,), results=True)
-        return dict((k, bytes(v)) for k, v in res)
+        return self._to_dict(res)
 
     def flush_results(self):
         self.sql('delete from {} where queue = %s'.format(self.table_kv),

@@ -4,7 +4,7 @@ except ImportError:
     sqlite3 = None
 
 from ._base import BaseStorage
-from ._shared import EmptyData
+from ._shared import ConfigurationError, EmptyData
 from ._sql_base import BaseSqlStorage
 
 
@@ -29,12 +29,15 @@ class SqliteStorage(BaseSqlStorage):
                      'queue text not null, key text not null, '
                      'value integer not null default 0, '
                      'primary key(queue, key))')
-    ddl = [table_kv, table_sched, index_sched, table_task, index_task,
-           table_counter]
+    ddl = (table_kv, table_sched, index_sched, table_task, index_task,
+           table_counter)
 
     def __init__(self, name='huey', filename='huey.db', cache_mb=8,
                  fsync=None, journal_mode='wal', timeout=5, strict_fifo=False,
                  create_tables=True, **kwargs):
+        if sqlite3 is None:
+            raise ConfigurationError('"sqlite3" not found. '
+                                     'Python 3 should have included this.')
         self.filename = filename
         self._cache_mb = cache_mb
         self._fsync = fsync
@@ -53,7 +56,7 @@ class SqliteStorage(BaseSqlStorage):
             ddl[3] = self.table_task.replace(
                 'primary key',
                 'primary key autoincrement')
-            self.ddl = ddl
+            self.ddl = tuple(ddl)
 
         self.to_blob = memoryview
 
@@ -87,17 +90,17 @@ class SqliteStorage(BaseSqlStorage):
                     return data
 
     def queue_size(self):
-        return self.sql('select count(id) from task where queue=?',
-                        (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(id) from task where queue=?',
+                                    (self.name,), results=True))
 
     def enqueued_items(self, limit=None):
         sql = 'select data from task where queue=? order by priority desc, id'
         params = (self.name,)
         if limit is not None:
             sql += ' limit ?'
-            params = (self.name, limit)
+            params += (limit,)
 
-        return [i for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_queue(self):
         self.sql('delete from task where queue=?', (self.name,), commit=True)
@@ -123,17 +126,17 @@ class SqliteStorage(BaseSqlStorage):
             return data
 
     def schedule_size(self):
-        return self.sql('select count(id) from schedule where queue=?',
-                        (self.name,), results=True)[0][0]
+        return self._first(self.sql('select count(id) from schedule where queue=?',
+                                    (self.name,), results=True))
 
     def scheduled_items(self, limit=None):
         sql = 'select data from schedule where queue=? order by timestamp'
         params = (self.name,)
         if limit is not None:
             sql += ' limit ?'
-            params = (self.name, limit)
+            params += (limit,)
 
-        return [i for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_schedule(self):
         self.sql('delete from schedule where queue = ?', (self.name,), True)
@@ -146,7 +149,7 @@ class SqliteStorage(BaseSqlStorage):
     def peek_data(self, key):
         res = self.sql('select value from kv where queue = ? and key = ?',
                        (self.name, key), results=True)
-        return res[0][0] if res else EmptyData
+        return self._first(res) if res else EmptyData
 
     def pop_data(self, key):
         with self.db(commit=True) as curs:
@@ -183,25 +186,24 @@ class SqliteStorage(BaseSqlStorage):
             return True
 
     def incr(self, key, amount=1):
+        if not self.sqlite_version_info >= (3, 24, 0):
+            raise NotImplementedError('SQLite 3.24 or newer is required.')
+        insert_sql = (
+            'insert into counter (queue, key, value) '
+            'values (?, ?, ?) on conflict (queue, key) '
+            'do update set value = value + ?'
+        )
+        select_counter = True
+        if self.sqlite_version_info >= (3, 35, 0):
+            insert_sql += ' returning value'
+            select_counter = False
         with self.db(commit=True) as curs:
-            if self.sqlite_version_info >= (3, 35, 0):
-                curs.execute('insert into counter (queue, key, value) '
-                             'values (?, ?, ?) on conflict (queue, key) '
-                             'do update set value = value + ? '
-                             'returning value',
-                             (self.name, key, amount, amount))
-                value, = curs.fetchone()
-            elif self.sqlite_version_info >= (3, 24, 0):
-                curs.execute('insert into counter (queue, key, value) '
-                             'values (?, ?, ?) on conflict (queue, key) '
-                             'do update set value = value + ?',
-                             (self.name, key, amount, amount))
+            curs.execute(insert_sql, (self.name, key, amount, amount))
+            if select_counter:
                 curs.execute('select value from counter '
                              'where queue = ? and key = ?',
                              (self.name, key))
-                value, = curs.fetchone()
-            else:
-                raise NotImplementedError('SQLite 3.24 or newer is required.')
+            value, = curs.fetchone()
 
         return value
 
@@ -210,13 +212,13 @@ class SqliteStorage(BaseSqlStorage):
                  (self.name, key), commit=True)
 
     def result_store_size(self):
-        return self.sql('select count(*) from kv where queue=?', (self.name,),
-                        results=True)[0][0]
+        return self._first(self.sql('select count(*) from kv where queue=?', (self.name,),
+                                    results=True))
 
     def result_items(self):
         res = self.sql('select key, value from kv where queue=?', (self.name,),
                        results=True)
-        return dict((k, v) for k, v in res)
+        return self._to_dict(res)
 
     def flush_results(self):
         self.sql('delete from kv where queue=?', (self.name,), True)

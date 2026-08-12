@@ -1,12 +1,28 @@
+import collections
 import contextlib
 import threading
 
 from ._base import BaseStorage
 
 
+def _value_error_msg(name, /, expected, actual, example=None):
+    def suffix(length):
+        return '' if 1 == length else 's'
+
+    if expected != actual:
+        if example is None:
+            example = ''
+        return (
+            f'SQL Execution Error: {name} expected exactly '
+            f'{expected} column{suffix(expected)}{example}, '
+            f'but rows contain {actual} column{suffix(actual)}. '
+            f'Check your SELECT clause.'
+        )
+
+
 class BaseSqlStorage(BaseStorage):
     begin_sql = 'begin'
-    ddl = []
+    ddl = ()
 
     def __init__(self, *args, **kwargs):
         create_tables = kwargs.pop('create_tables', True)
@@ -62,3 +78,65 @@ class BaseSqlStorage(BaseStorage):
             curs.execute(query, params or ())
             if results:
                 return curs.fetchall()
+
+    def _first(self, results):
+        error_msg = (
+            'SQL Execution Error: _first expected at least 1 {}. '
+            'Check your SELECT clause.'
+        )
+        if not results:
+            raise ValueError(error_msg.format('row'))
+
+        actual = len(results[0])
+        if 1 > actual:
+            raise ValueError(error_msg.format('column'))
+
+        return results[0][0]
+
+    def _flatten(self, results):
+        """Safely flattens a database result of 1-column rows into a 1D list.
+
+        Loudly fails if rows do not have exactly 1 column.
+        """
+        if not results:
+            return []
+
+        actual = len(results[0])
+        error_msg = _value_error_msg('_flatten', expected=1, actual=actual, example=' (value,)')
+        if error_msg:
+            raise ValueError(error_msg)
+
+        return [item for (item,) in results]
+
+    def _to_dict(self, results):
+        """Safely converts a database result of 2-column rows (key, value) into a dict.
+
+        Loudly fails if rows do not have exactly 2 columns.
+        """
+        if not results:
+            return {}
+
+        actual = len(results[0])
+        error_msg = _value_error_msg('_to_dict', expected=2, actual=actual, example=' (key, value)')
+        if error_msg:
+            raise ValueError(error_msg)
+
+        return dict(results)
+
+    def _to_dict_of_lists(self, results):
+        """Safely groups a database result of 2-column rows into a dict of lists.
+
+        Loudly fails if rows do not have exactly 2 columns.
+        """
+        if not results:
+            return {}
+
+        actual = len(results[0])
+        error_msg = _value_error_msg('_to_dict_of_lists', expected=2, actual=actual, example=' (key, value)')
+        if error_msg:
+            raise ValueError(error_msg)
+
+        grouped = collections.defaultdict(list)
+        for key, value in results:
+            grouped[key].append(value)
+        return dict(grouped)
