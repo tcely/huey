@@ -180,7 +180,7 @@ class PostgresStorage(BaseSqlStorage):
             sql += ' limit %s'
             params += (limit,)
 
-        return [bytes(i) for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_queue(self):
         self.sql('delete from {} where queue = %s'.format(self.table_task),
@@ -215,7 +215,7 @@ class PostgresStorage(BaseSqlStorage):
             sql += ' limit %s'
             params += (limit,)
 
-        return [bytes(i) for i, in self.sql(sql, params, results=True)]
+        return self._flatten(self.sql(sql, params, results=True))
 
     def flush_schedule(self):
         self.sql('delete from {} where queue = %s'.format(
