@@ -222,7 +222,11 @@ class PostgresStorage(BaseSqlStorage):
             self.table_schedule), (self.name,))
 
     def _key(self, key):
-        return key.decode('utf-8') if isinstance(key, bytes) else key
+        if isinstance(key, bytes):
+            key = key.decode('utf-8')
+        if not isinstance(key, str):
+            key = str(key)
+        return key
 
     def _bytea(self, value):
         return value.encode('utf-8') if isinstance(value, str) else value
