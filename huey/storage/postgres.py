@@ -136,7 +136,7 @@ class PostgresStorage(BaseSqlStorage):
         with self.db(commit=True) as curs:
             curs.execute('insert into {} (queue, data, priority) '
                          'values (%s, %s, %s)'.format(self.table_task),
-                         (self.name, data, priority or 0))
+                         (self.name, self._bytea(data), priority or 0))
             curs.execute('select pg_notify(%s, %s)', (self.channel, ''))
 
     def _dequeue(self):
@@ -189,7 +189,7 @@ class PostgresStorage(BaseSqlStorage):
     def add_to_schedule(self, data, ts):
         self.sql('insert into {} (queue, data, timestamp) '
                  'values (%s, %s, %s)'.format(self.table_schedule),
-                 (self.name, data, ts.timestamp()))
+                 (self.name, self._bytea(data), ts.timestamp()))
 
     def read_schedule(self, ts):
         with self.db() as curs:
@@ -224,11 +224,14 @@ class PostgresStorage(BaseSqlStorage):
     def _key(self, key):
         return key.decode('utf-8') if isinstance(key, bytes) else key
 
+    def _bytea(self, value):
+        return value.encode('utf-8') if isinstance(value, str) else value
+
     def put_data(self, key, value, is_result=False):
         self.sql('insert into {} (queue, key, value) values (%s, %s, %s) '
                  'on conflict (queue, key) do update set '
                  'value = excluded.value'.format(self.table_kv),
-                 (self.name, self._key(key), value))
+                 (self.name, self._key(key), self._bytea(value)))
 
     def peek_data(self, key):
         res = self.sql('select value from {} where queue = %s and '
@@ -254,7 +257,7 @@ class PostgresStorage(BaseSqlStorage):
             curs.execute('insert into {} (queue, key, value) '
                          'values (%s, %s, %s) '
                          'on conflict do nothing'.format(self.table_kv),
-                         (self.name, self._key(key), value))
+                         (self.name, self._key(key), self._bytea(value)))
             return curs.rowcount == 1
 
     def incr(self, key, amount=1):
