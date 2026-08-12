@@ -149,7 +149,7 @@ class PostgresStorage(BaseSqlStorage):
                          (self.name,))
             row = curs.fetchone()
         if row is not None:
-            return bytes(row[0])
+            return row[0]
 
     def dequeue(self):
         data = self._dequeue()
@@ -200,7 +200,7 @@ class PostgresStorage(BaseSqlStorage):
                              t=self.table_schedule),
                          (self.name, ts.timestamp()))
             rows = curs.fetchall()
-        return [bytes(data) for _, _, data in
+        return [data for _, _, data in
                 sorted(rows, key=lambda row: row[:2])]
 
     def schedule_size(self):
@@ -242,7 +242,7 @@ class PostgresStorage(BaseSqlStorage):
                          'returning value'.format(self.table_kv),
                          (self.name, self._key(key)))
             row = curs.fetchone()
-        return bytes(row[0]) if row is not None else EmptyData
+        return row[0] if row is not None else EmptyData
 
     def has_data_for_key(self, key):
         return bool(self.sql('select 1 from {} where queue = %s and '
