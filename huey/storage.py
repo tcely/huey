@@ -830,22 +830,46 @@ class BaseSqlStorage(BaseStorage):
     def __init__(self, *args, **kwargs):
         create_tables = kwargs.pop('create_tables', True)
         super(BaseSqlStorage, self).__init__(*args, **kwargs)
+        self._conn = None
+        self._local = None
         self._ensure_local()
+
+        # register for after the fork
+        func = getattr(os, 'register_at_fork', None)
+        if callable(func):
+            func(after_in_child=self._after_fork)
+
         if create_tables:
             self.initialize_schema()
 
+    def _after_fork(self):
+        self._ensure_local()
+        for attr in tuple(self._local.__dict__.keys()):
+            delattr(self._local, attr)
+        self._ensure_local()
+
+        # Do not reuse or close conns across fork!
+        self._local.inherited.add(self._conn)
+        self._conn = None
+
     def _ensure_local(self):
-        if not hasattr(self, '_local'):
+        if not hasattr(self, '_local') or self._local is None:
             self._local = threading.local()
-        for attr in ('conn', 'lock', 'pid'):
+        for attr in ('conn', 'inherited', 'lock', 'pid'):
             if not hasattr(self._local, attr):
                 setattr(self._local, attr, None)
-        if self._local.pid is None:
-            self._local.pid = os.getpid()
-        if self._local.pid != os.getpid():
-            for attr in tuple(self._local.__dict__.keys()):
-                delattr(self._local, attr)
-            self._ensure_local()
+        if self._local.inherited is None:
+            self._local.inherited = set()
+
+        # fork detection by mismatched process ID numbers
+        func = getattr(os, 'getpid', None)
+        if callable(func):
+            if self._local.pid is None:
+                self._local.pid = func()
+            if self._local.pid != func():
+                for attr in tuple(self._local.__dict__.keys()):
+                    delattr(self._local, attr)
+                self._after_fork()
 
     def close(self):
         self._ensure_local()
@@ -1225,16 +1249,17 @@ class PostgresStorage(BaseSqlStorage):
             'queue text not null, key text not null, '
             'value bigint not null default 0, primary key(queue, key))')]
 
-        # Do not reuse conns across fork!
-        self._inherited = set()
-
         # Each worker thread gets its own LISTEN connection on first
         # dequeue. A dead thread's connection is released by GC: psycopg
         # only sends the protocol Terminate from the creating process, so
         # this is safe on both sides of a fork.
-        self._local = threading.local()
+        self._listen_local = threading.local()
 
         super(PostgresStorage, self).__init__(name, create_tables=create_tables)
+
+    def _after_fork(self):
+        super(PostgresStorage, self)._after_fork()
+        self._listen_local = threading.local()
 
     def _create_connection(self):
         if self.connection is not None:
@@ -1248,32 +1273,33 @@ class PostgresStorage(BaseSqlStorage):
     def _save_inherited(self):
         local = getattr(self, '_local', threading.local())
         conn = getattr(local, 'conn', None)
+        inherited = getattr(local, 'inherited', set())
 
         if conn is not None:
             pid = getattr(local, 'pid', None)
-            if pid != os.getpid():
-                self._inherited.add(conn)
+            if pid and pid != os.getpid():
+                inherited.add(conn)
                 conn = None
             elif conn.closed or conn.broken:
                 self._close_quiet(conn)
                 conn = None
+        if self._conn is not None and (self._conn.closed or self._conn.broken):
+            self._close_quiet(self._conn)
+            self._conn = None
+        if inherited and self._conn is not None:
+            inherited.add(self._conn)
 
         self._ensure_local()
         local = self._local
-
-        if conn is None:
-            with self.lock:
+        with self.lock:
+            local.inherited = inherited
+            if conn is None:
                 local.conn = None
 
     @property
     def conn(self):
         self._save_inherited()
-        local = self._local
-        
-        if local.conn is None:
-            with self.lock:
-                local.conn = self._create_connection()
-        return local.conn
+        return super(PostgresStorage, self).conn
 
     def _close_quiet(self, conn):
         try:
@@ -1284,7 +1310,7 @@ class PostgresStorage(BaseSqlStorage):
     def close(self):
         self._save_inherited()
         local = self._local
- 
+
         with self.lock:
             return super(PostgresStorage, self).close()
 
@@ -1313,9 +1339,8 @@ class PostgresStorage(BaseSqlStorage):
 
         # create a listen connection
         listen_conn = getattr(local, 'listen_conn', None)
-        if listen_conn is None or listen_conn.closed or listen_conn.broken:
-            if listen_conn:
-                self._close_quiet(listen_conn)
+        if listen_conn is not None and (listen_conn.closed or listen_conn.broken):
+            self._close_quiet(listen_conn)
             listen_conn = None
         if listen_conn is None:
             with self.lock:
